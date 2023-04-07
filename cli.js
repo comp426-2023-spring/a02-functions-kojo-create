@@ -1,61 +1,71 @@
 #!/usr/bin/env node
-const yargs = require('yargs/yargs')
-const { hideBin } = require('yargs/helpers')
-const fetch = require('node-fetch')
-const moment = require('moment-timezone')
 
-const options = yargs(hideBin(process.argv))
-  .usage('Usage: galosh.js [options] -[n|s] LATITUDE -[e|w] LONGITUDE -z TIME_ZONE')
-  .option('help', { alias: 'h', describe: 'Show this help message and exit.', type: 'boolean' })
-  .option('latitude-north', { alias: 'n', describe: 'Latitude: N positive.', type: 'number' })
-  .option('latitude-south', { alias: 's', describe: 'Latitude: S negative.', type: 'number' })
-  .option('longitude-east', { alias: 'e', describe: 'Longitude: E positive.', type: 'number' })
-  .option('longitude-west', { alias: 'w', describe: 'Longitude: W negative.', type: 'number' })
-  .option('timezone', { alias: 'z', describe: 'Time zone: uses tz.guess() from moment-timezone by default.', type: 'string' })
-  .option('day', { alias: 'd', describe: 'Day to retrieve weather: 0 is today; defaults to 1.', type: 'number', default: 1 })
-  .option('json', { alias: 'j', describe: 'Echo pretty JSON from open-meteo API and exit.', type: 'boolean' })
-  .check((argv, options) => {
-    if ((argv.n && argv.s) || (!argv.n && !argv.s)) {
-      throw new Error('Please provide one latitude argument: either north (n) or south (s).')
-    }
-    if ((argv.e && argv.w) || (!argv.e && !argv.w)) {
-      throw new Error('Please provide one longitude argument: either east (e) or west (w).')
-    }
-    return true
-  })
-  .argv
+import minimist from "minimist";
+import fetch from "node-fetch";
+import moment from "moment-timezone";
 
-if (options.help) {
-  console.log(options.usage)
-  process.exit(0)
+const timezone = moment.tz.guess();
+const args = minimist(process.argv.slice(2));
+
+if (args.h) {
+  console.log(`Usage: galosh.js [options] -[n|s] LATITUDE -[e|w] LONGITUDE -z TIME_ZONE
+  -h            Show this help message and exit.
+  -n, -s        Latitude: N positive; S negative.
+  -e, -w        Longitude: E positive; W negative.
+  -z            Time zone: uses tz.guess() from moment-timezone by default.
+  -d 0-6        Day to retrieve weather: 0 is today; defaults to 1.
+  -j            Echo pretty JSON from open-meteo API and exit.`);
+  process.exit(0);
 }
 
-const latitude = options.n || -options.s
-const longitude = options.e || -options.w
-const timezone = options.timezone || moment.tz.guess()
-const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&timezone=${timezone}&daily=precipitation_hours`
+let latitude, longitude;
+if (args.n && args.s) {
+  console.log("Please only input one latitude argument. Either north (n) or south (s).");
+  process.exit(0);
+} else if (args.n) {
+  latitude = args.n;
+} else if (args.s) {
+  latitude = -args.s;
+} else {
+  console.log("Latitude must be in range");
+  process.exit(0);
+}
 
-fetch(url)
-  .then(response => response.json())
-  .then(data => {
-    const precipitationHours = data.daily.precipitation_hours
-    const days = options.day
-    const hasPrecipitation = precipitationHours[days] > 0
-    let message = `It should be ${hasPrecipitation ? 'rainy' : 'sunny'}`
-    if (days === 0) {
-      message += ' today.'
-    } else if (days === 1) {
-      message += ' tomorrow.'
-    } else {
-      message += ` in ${days} days.`
-    }
-    if (options.json) {
-      console.log(JSON.stringify(data, null, 2))
-    } else {
-      console.log(message)
-    }
-  })
-  .catch(error => {
-    console.error(error)
-    process.exit(1)
-  })
+if (args.w && args.e) {
+  console.log("Please only input one longitude argument. Either west (w) or east (e).");
+  process.exit(0);
+} else if (args.e) {
+  longitude = args.e;
+} else if (args.w) {
+  longitude = -args.w;
+} else {
+  console.log("Please input a longitude argument. Either north west (w) or east (e).");
+  process.exit(0);
+}
+
+const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&timezone=${timezone}&daily=precipitation_hours`;
+const response = await fetch(url);
+const data = await response.json();
+const days = args.d;
+let string;
+
+if (data.daily.precipitation_hours[days] > 0) {
+  string = "Don't forget your umbrella. It's raining ";
+} else {
+  string = "It should be sunny ";
+}
+
+if (days == 0) {
+  string += "today.";
+} else if (days > 1) {
+  string += `in ${days} days.`;
+} else {
+  string += "tomorrow.";
+}
+
+if (args.j) {
+  console.log(data);
+  process.exit(0);
+} else {
+  console.log(string);
+}
